@@ -52,15 +52,21 @@ export function SinglePlayer({ questions, onFinish, onHome }: SinglePlayerProps)
     }, 1200);
   };
 
-  const progress = ((currentIndex) / questions.length) * 100;
+  const handleHomeClick = () => {
+    if (window.confirm('確定要回到主畫面嗎？目前的練習進度將會遺失。')) {
+      onHome();
+    }
+  };
 
+  const progress = ((currentIndex) / questions.length) * 100;
+  
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center p-4">
       <div className="w-full max-w-2xl mt-12 bg-white rounded-2xl shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] border-4 border-slate-900 overflow-hidden flex flex-col">
         
         {/* Header */}
         <div className="bg-indigo-600 text-white px-6 py-4 flex justify-between items-center border-b-4 border-slate-900">
-          <button onClick={onHome} className="bg-indigo-700 hover:bg-indigo-800 p-2 rounded-lg transition-colors border-2 border-indigo-900 shadow-[2px_2px_0px_0px_rgba(30,27,75,1)] active:translate-y-0.5 active:shadow-none">
+          <button onClick={handleHomeClick} className="bg-indigo-700 hover:bg-indigo-800 p-2 rounded-lg transition-colors border-2 border-indigo-900 shadow-[2px_2px_0px_0px_rgba(30,27,75,1)] active:translate-y-0.5 active:shadow-none">
              <Home className="w-5 h-5" />
           </button>
           <span className="font-semibold text-lg">單人練習</span>

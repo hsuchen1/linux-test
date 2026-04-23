@@ -112,7 +112,7 @@ export function DesktopVS({ questions, onFinish, onHome }: DesktopVSProps) {
   return (
     <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl flex justify-between items-end mb-4 px-4 relative">
-        <button onClick={onHome} className="absolute -top-12 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
+        <button onClick={handleHomeClick} className="absolute -top-12 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
            <Home className="w-6 h-6" />
         </button>
 
