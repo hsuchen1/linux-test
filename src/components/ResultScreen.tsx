@@ -1,10 +1,11 @@
-import React from 'react';
-import { GameMode, WrongAnswer } from '../types';
+import React, { useMemo } from 'react';
+import { GameMode, Question, WrongAnswer } from '../types';
 import { Award, RotateCcw, Home, Frown } from 'lucide-react';
 
 interface ResultScreenProps {
   mode: GameMode;
   scores: { p1: number, p2: number };
+  playerNames?: { p1: string, p2: string };
   total: number;
   wrongAnswers: WrongAnswer[];
   onRestart: () => void;
@@ -12,9 +13,24 @@ interface ResultScreenProps {
   onRetestWrong?: () => void;
 }
 
-export function ResultScreen({ mode, scores, total, wrongAnswers, onRestart, onHome, onRetestWrong }: ResultScreenProps) {
+export function ResultScreen({ mode, scores, playerNames, total, wrongAnswers, onRestart, onHome, onRetestWrong }: ResultScreenProps) {
   
   const isSingle = mode === 'single';
+
+  const groupedWrongs = useMemo(() => {
+    const map = new Map<number, { question: Question; attempts: { chosenId: string; playerName?: string; player: number }[] }>();
+    wrongAnswers.forEach(wa => {
+      if (!map.has(wa.question.id)) {
+        map.set(wa.question.id, { question: wa.question, attempts: [] });
+      }
+      map.get(wa.question.id)!.attempts.push({ 
+        chosenId: wa.chosenId, 
+        playerName: wa.playerName, 
+        player: wa.player 
+      });
+    });
+    return Array.from(map.values());
+  }, [wrongAnswers]);
   
   return (
     <div className="min-h-screen py-12 px-4 flex flex-col items-center">
@@ -31,14 +47,14 @@ export function ResultScreen({ mode, scores, total, wrongAnswers, onRestart, onH
           ) : (
             <div className="mt-8 flex justify-center items-center gap-12 bg-slate-50 dark:bg-slate-800 p-6 border-4 border-slate-900 rounded-[2rem] shadow-[inset_4px_4px_0px_0px_rgba(15,23,42,0.05)] dark:shadow-none w-fit mx-auto">
               <div className={`text-center ${scores.p1 > scores.p2 ? 'scale-110' : ''}`}>
-                <div className="text-sm font-black text-slate-500 mb-1 tracking-widest">玩家 1</div>
+                <div className="text-sm font-black text-slate-500 mb-1 tracking-widest">{playerNames?.p1 || '玩家 1'}</div>
                 <div className={`text-6xl font-black ${scores.p1 > scores.p2 ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-md' : 'text-slate-700 dark:text-slate-300'}`}>
                   {scores.p1}
                 </div>
               </div>
               <div className="text-3xl font-black text-slate-300">-</div>
               <div className={`text-center ${scores.p2 > scores.p1 ? 'scale-110' : ''}`}>
-                <div className="text-sm font-black text-slate-500 mb-1 tracking-widest">玩家 2</div>
+                <div className="text-sm font-black text-slate-500 mb-1 tracking-widest">{playerNames?.p2 || '玩家 2'}</div>
                 <div className={`text-6xl font-black ${scores.p2 > scores.p1 ? 'text-rose-600 dark:text-rose-400 drop-shadow-md' : 'text-slate-700 dark:text-slate-300'}`}>
                   {scores.p2}
                 </div>
@@ -48,40 +64,49 @@ export function ResultScreen({ mode, scores, total, wrongAnswers, onRestart, onH
           
           {!isSingle && (
             <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-8 uppercase tracking-widest">
-              {scores.p1 === scores.p2 ? '平手！' : `玩家 ${scores.p1 > scores.p2 ? '1' : '2'} 獲勝！`}
+              {scores.p1 === scores.p2 ? '平手！' : `${scores.p1 > scores.p2 ? (playerNames?.p1 || '玩家 1') : (playerNames?.p2 || '玩家 2')} 獲勝！`}
             </div>
           )}
         </div>
 
-        {wrongAnswers.length > 0 && (
+        {groupedWrongs.length > 0 && (
           <div className="mt-12">
             <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-6 flex items-center bg-rose-200 dark:bg-rose-900 dark:text-rose-100 border-4 border-slate-900 px-4 py-2 w-fit rounded-xl shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] dark:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
               <Frown className="w-8 h-8 mr-3 text-rose-600 dark:text-rose-400" />
-              錯題回顧 ({wrongAnswers.length} 題)
+              錯題回顧 ({groupedWrongs.length} 題)
             </h2>
             <div className="space-y-6">
-              {wrongAnswers.map((wa, i) => (
+              {groupedWrongs.map((gw, i) => (
                 <div key={i} className="p-6 rounded-2xl bg-white dark:bg-slate-800 border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] dark:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative">
                   {!isSingle && (
-                    <div className="absolute -top-4 -right-4 text-sm font-black text-white bg-rose-600 px-4 py-1 rounded-lg border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] dark:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                      玩家 {wa.player} 答錯
+                    <div className="absolute -top-4 -right-4 flex flex-col items-end gap-2">
+                      {gw.attempts.map((att, idx) => (
+                        <div key={idx} className="text-sm font-black text-white bg-rose-600 px-4 py-1 rounded-lg border-2 border-slate-900 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] dark:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] whitespace-nowrap">
+                          {att.playerName || `玩家 ${att.player}`} 答錯
+                        </div>
+                      ))}
                     </div>
                   )}
-                  <div className="font-bold text-xl mb-4 text-slate-900 dark:text-slate-100 leading-relaxed">
-                    {wa.question.id}. {wa.question.text}
+                  <div className="font-bold text-xl mb-4 text-slate-900 dark:text-slate-100 leading-relaxed pr-16">
+                    {gw.question.id}. {gw.question.text}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                    {(['A', 'B', 'C', 'D'] as const).map(opt => (
-                      <div key={opt} className={`p-4 rounded-xl text-base border-2 font-bold ${
-                        opt === wa.question.answer 
-                          ? 'bg-emerald-100 dark:bg-emerald-900/60 border-emerald-500 text-emerald-800 dark:text-emerald-100'
-                          : opt === wa.chosenId 
-                            ? 'bg-rose-100 dark:bg-rose-900/60 border-rose-500 text-rose-800 dark:text-rose-100 line-through opacity-80'
-                            : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-400'
-                      }`}>
-                        ({opt}) {wa.question.options[opt]}
-                      </div>
-                    ))}
+                    {(['A', 'B', 'C', 'D'] as const).map(opt => {
+                      const isCorrect = opt === gw.question.answer;
+                      const wasChosen = gw.attempts.some(att => att.chosenId === opt);
+                      
+                      return (
+                        <div key={opt} className={`p-4 rounded-xl text-base border-2 font-bold ${
+                          isCorrect 
+                            ? 'bg-emerald-100 dark:bg-emerald-900/60 border-emerald-500 text-emerald-800 dark:text-emerald-100'
+                            : wasChosen 
+                              ? 'bg-rose-100 dark:bg-rose-900/60 border-rose-500 text-rose-800 dark:text-rose-100 line-through opacity-80'
+                              : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-400'
+                        }`}>
+                          ({opt}) {gw.question.options[opt]}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { GameMode, Question, WrongAnswer } from './types';
 import { rawOCRText } from './data/rawText';
 import { parseQuestions } from './data/parser';
+import { auth } from './firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 import { StartScreen } from './components/StartScreen';
 import { SinglePlayer } from './components/SinglePlayer';
@@ -20,9 +22,18 @@ export default function App() {
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
   
   const [scores, setScores] = useState({ p1: 0, p2: 0 });
+  const [playerNames, setPlayerNames] = useState<{p1: string, p2: string} | undefined>(undefined);
   const [wrongAnswers, setWrongAnswers] = useState<WrongAnswer[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setCurrentUser(u);
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     // Parse questions on mount
@@ -90,17 +101,31 @@ export default function App() {
     setMode('result');
   };
 
-  const handleFinishVS = (finalScores: { p1: number, p2: number }, wrongs: WrongAnswer[]) => {
+  const handleFinishVS = (finalScores: { p1: number, p2: number }, wrongs: WrongAnswer[], names?: {p1: string, p2: string}) => {
     setScores(finalScores);
     setWrongAnswers(wrongs);
+    setPlayerNames(names);
     setMode('result');
   };
 
   const handleRetestWrong = () => {
     if (wrongAnswers.length === 0) return;
-    // Extract unique questions from wrongAnswers
-    const wrongQMap = new Map<string, Question>();
-    wrongAnswers.forEach(w => {
+    
+    // Filter questions that CURRENT USER got wrong
+    let relevantWrongs = wrongAnswers;
+    // Only filter by UID if we were in an online match and have a user context
+    if (lastMode === 'online-vs' && currentUser) {
+      relevantWrongs = wrongAnswers.filter(w => w.uid === currentUser.uid);
+    }
+    
+    if (relevantWrongs.length === 0) {
+      alert(lastMode === 'online-vs' ? "目前沒有您的錯題記錄。" : "沒有錯題記錄。");
+      return;
+    }
+
+    // Extract unique questions from relevantWrongs
+    const wrongQMap = new Map<number, Question>();
+    relevantWrongs.forEach(w => {
       wrongQMap.set(w.question.id, w.question);
     });
     const selected = Array.from(wrongQMap.values());
@@ -110,6 +135,7 @@ export default function App() {
     setSelectedCount(selected.length);
     setScores({ p1: 0, p2: 0 });
     setWrongAnswers([]);
+    setPlayerNames(undefined);
     setLastMode('single'); // fallback to single
     setMode('single');
   };
@@ -195,6 +221,7 @@ export default function App() {
         <ResultScreen 
           mode={lastMode}
           scores={scores}
+          playerNames={playerNames}
           total={activeQuestions.length}
           wrongAnswers={wrongAnswers}
           onRestart={() => handleStart(lastMode, selectedCount)}

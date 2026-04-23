@@ -16,4 +16,6 @@ export interface WrongAnswer {
   question: Question;
   chosenId: string;
   player: number;
+  uid?: string;
+  playerName?: string;
 }

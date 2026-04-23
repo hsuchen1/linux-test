@@ -9,7 +9,7 @@ import { collection, doc, setDoc, onSnapshot, updateDoc, getDoc, query, where, g
 interface OnlineVSProps {
   allQuestions: Question[];
   questionCount: number;
-  onFinish: (scores: {p1: number, p2: number}, wrongAnswers: WrongAnswer[]) => void;
+  onFinish: (scores: {p1: number, p2: number}, wrongAnswers: WrongAnswer[], playerNames? : {p1: string, p2: string}) => void;
   onHome: () => void;
 }
 
@@ -38,10 +38,12 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
           setRoomData(data);
           
           if (data.status === 'finished') {
-            onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || []);
+            const names = { p1: data.hostName || 'Player 1', p2: data.guestName || 'Player 2' };
+            onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || [], names);
           } else if (data.status === 'abandoned') {
             alert('對手已離開對戰，遊戲結束。');
-            onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || []);
+            const names = { p1: data.hostName || 'Player 1', p2: data.guestName || 'Player 2' };
+            onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || [], names);
           }
         }
       });
@@ -234,13 +236,31 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     if (roomData.p1Answer === question.answer) newP1Score++;
     else if (roomData.p1Answer) {
       newP1Score--;
-      newWrongAnswers = [...newWrongAnswers, { question, chosenId: roomData.p1Answer, player: 1 }];
+      newWrongAnswers = [
+        ...newWrongAnswers, 
+        { 
+          question, 
+          chosenId: roomData.p1Answer, 
+          player: 1, 
+          uid: roomData.hostId, 
+          playerName: roomData.hostName 
+        }
+      ];
     }
 
     if (roomData.p2Answer === question.answer) newP2Score++;
     else if (roomData.p2Answer) {
       newP2Score--;
-      newWrongAnswers = [...newWrongAnswers, { question, chosenId: roomData.p2Answer, player: 2 }];
+      newWrongAnswers = [
+        ...newWrongAnswers, 
+        { 
+          question, 
+          chosenId: roomData.p2Answer, 
+          player: 2, 
+          uid: roomData.guestId, 
+          playerName: roomData.guestName 
+        }
+      ];
     }
 
     setTimeout(async () => {
