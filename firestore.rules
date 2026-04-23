@@ -22,6 +22,7 @@ service cloud.firestore {
         && data.p1Score is number
         && data.p2Score is number
         && data.createdAt is number
+        && (data.get('isPublic', null) == null || data.isPublic is bool)
         && (data.get('guestId', null) == null || (data.guestId is string && data.guestId.size() <= 128))
         && (data.get('guestName', null) == null || (data.guestName is string && data.guestName.size() <= 50))
         && (data.get('p1Answer', null) == null || (data.p1Answer is string && data.p1Answer.size() <= 10))
@@ -57,7 +58,7 @@ service cloud.firestore {
             existing().status == 'waiting' && 
             incoming().status == 'playing' &&
             incoming().guestId == request.auth.uid &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'guestId', 'guestName', 'questionIndices'])
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'guestId', 'guestName', 'questionIndices', 'isPublic'])
           ) ||
           // Action: Play (Submit Answer / Advance state)
           (

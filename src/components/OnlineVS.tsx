@@ -4,7 +4,7 @@ import { Home, LogIn, Users, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, signInWithGoogle } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, doc, setDoc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, updateDoc, getDoc, query, where, getDocs, limit } from 'firebase/firestore';
 
 interface OnlineVSProps {
   allQuestions: Question[];
@@ -20,6 +20,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   const [loading, setLoading] = useState(true);
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
+  const [isMatching, setIsMatching] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -110,6 +111,60 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       status: 'playing'
     });
     setRoomId(code);
+  };
+
+  const handleRandomMatch = async () => {
+    if (!user) return;
+    setError('');
+    setIsMatching(true);
+    try {
+      const roomsRef = collection(db, 'rooms');
+      const q = query(roomsRef, where('status', '==', 'waiting'), where('isPublic', '==', true), limit(1));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        // join existing public room
+        const docSnap = snapshot.docs[0];
+        const matchRoomId = docSnap.id;
+        
+        await updateDoc(doc(db, 'rooms', matchRoomId), {
+           guestId: user.uid,
+           guestName: user.displayName || 'Player 2',
+           status: 'playing',
+           isPublic: false
+        });
+        setRoomId(matchRoomId);
+      } else {
+        // create new public room
+        const newId = Math.random().toString(36).substring(2, 6).toUpperCase();
+        const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+        const selected = shuffled.slice(0, questionCount).map(q => allQuestions.indexOf(q));
+
+        await setDoc(doc(db, 'rooms', newId), {
+          hostId: user.uid,
+          hostName: user.displayName || 'Player 1',
+          guestId: null,
+          guestName: null,
+          status: 'waiting',
+          currentIndex: 0,
+          p1Score: 0,
+          p2Score: 0,
+          p1Answer: null,
+          p2Answer: null,
+          timerStart: null,
+          questionIndices: selected,
+          wrongAnswers: [],
+          createdAt: Date.now(),
+          isPublic: true
+        });
+        setRoomId(newId);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('匹配時發生錯誤');
+    } finally {
+      setIsMatching(false);
+    }
   };
 
   const handleSelect = async (answer: string) => {
@@ -249,15 +304,24 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         <div className="bg-white p-10 rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] text-center max-w-md w-full">
            <h2 className="text-3xl font-black mb-8 text-slate-900">連線大廳</h2>
            
+           <button 
+             onClick={handleRandomMatch} 
+             disabled={isMatching}
+             className="w-full py-4 mb-4 bg-indigo-500 text-white border-4 border-slate-900 rounded-2xl font-black text-xl shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:translate-x-1 active:translate-y-1 active:shadow-none hover:bg-indigo-400 disabled:opacity-75 disabled:cursor-wait flex items-center justify-center gap-2"
+           >
+             {isMatching ? <Loader2 className="w-6 h-6 animate-spin" /> : <Users className="w-6 h-6" />}
+             {isMatching ? '配對中...' : '隨機配對'}
+           </button>
+
+           <div className="relative flex py-4 items-center">
+              <div className="flex-grow border-t-2 border-slate-200"></div>
+              <span className="flex-shrink-0 mx-4 text-slate-400 font-bold">與好友連線</span>
+              <div className="flex-grow border-t-2 border-slate-200"></div>
+           </div>
+
            <button onClick={handleCreateRoom} className="w-full py-4 mb-6 bg-emerald-500 text-slate-900 border-4 border-slate-900 rounded-2xl font-black text-xl shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:translate-x-1 active:translate-y-1 active:shadow-none hover:bg-emerald-400">
               建立房間
            </button>
-
-           <div className="relative flex py-5 items-center">
-              <div className="flex-grow border-t-2 border-slate-200"></div>
-              <span className="flex-shrink-0 mx-4 text-slate-400 font-bold">或</span>
-              <div className="flex-grow border-t-2 border-slate-200"></div>
-           </div>
 
            <div className="flex flex-col sm:flex-row gap-3">
              <input 

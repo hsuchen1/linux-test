@@ -22,6 +22,8 @@ export default function App() {
   const [scores, setScores] = useState({ p1: 0, p2: 0 });
   const [wrongAnswers, setWrongAnswers] = useState<WrongAnswer[]>([]);
 
+  const [isDark, setIsDark] = useState(false);
+
   useEffect(() => {
     // Parse questions on mount
     try {
@@ -31,6 +33,11 @@ export default function App() {
       console.error('Failed to parse questions:', e);
     } finally {
       setLoading(false);
+    }
+
+    if (localStorage.getItem('theme') === 'dark') {
+      setIsDark(true);
+      window.document.documentElement.classList.add('dark');
     }
 
     // PWA Auto-Update Logic
@@ -89,6 +96,37 @@ export default function App() {
     setMode('result');
   };
 
+  const handleRetestWrong = () => {
+    if (wrongAnswers.length === 0) return;
+    // Extract unique questions from wrongAnswers
+    const wrongQMap = new Map<string, Question>();
+    wrongAnswers.forEach(w => {
+      wrongQMap.set(w.question.id, w.question);
+    });
+    const selected = Array.from(wrongQMap.values());
+    
+    // Always use single player mode for retesting wrongs
+    setActiveQuestions(selected);
+    setSelectedCount(selected.length);
+    setScores({ p1: 0, p2: 0 });
+    setWrongAnswers([]);
+    setLastMode('single'); // fallback to single
+    setMode('single');
+  };
+
+  const toggleDarkMode = () => {
+    const root = window.document.documentElement;
+    const willBeDark = !isDark;
+    setIsDark(willBeDark);
+    if (willBeDark) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -106,7 +144,16 @@ export default function App() {
   }
 
   return (
-    <div className="font-sans antialiased text-slate-900 bg-slate-50 min-h-screen selection:bg-blue-200">
+    <div className="font-sans antialiased text-slate-900 bg-slate-50 dark:bg-slate-950 dark:text-slate-100 min-h-screen selection:bg-blue-200 transition-colors duration-300">
+      <div className="absolute top-4 right-4 z-50">
+        <button 
+          onClick={toggleDarkMode} 
+          className="p-3 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-full shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] dark:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] border-2 border-slate-900 dark:border-slate-700 active:translate-y-1 active:translate-x-1 active:shadow-none transition-all flex items-center justify-center w-12 h-12"
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
+      </div>
+
       {mode === 'start' && (
         <StartScreen onStart={handleStart} />
       )}
@@ -152,6 +199,7 @@ export default function App() {
           wrongAnswers={wrongAnswers}
           onRestart={() => handleStart(lastMode, selectedCount)}
           onHome={() => setMode('start')}
+          onRetestWrong={handleRetestWrong}
         />
       )}
     </div>
