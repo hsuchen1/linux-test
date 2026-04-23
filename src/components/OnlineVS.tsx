@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameMode, Question, WrongAnswer } from '../types';
 import { Home, LogIn, Users, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, signInWithGoogle } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, setDoc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
@@ -37,12 +38,29 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
           
           if (data.status === 'finished') {
             onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || []);
+          } else if (data.status === 'abandoned') {
+            alert('對手已離開對戰，遊戲結束。');
+            onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || []);
           }
         }
       });
       return unsub;
     }
   }, [roomId, onFinish]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Browsers often ignore async requests here, but we can try
+      if (roomId && roomData && roomData.status === 'playing') {
+         // Fire and forget
+         updateDoc(doc(db, 'rooms', roomId), { status: 'abandoned' }).catch(() => {});
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [roomId, roomData?.status]);
 
   const handleCreateRoom = async () => {
     if (!user) return;
@@ -187,12 +205,26 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   };
 
 
+  const handleHomeClick = async () => {
+    if (roomId && roomData && roomData.status === 'playing') {
+      if (window.confirm("確定要離開嗎？此舉將直接結束這場對戰。")) {
+        await updateDoc(doc(db, 'rooms', roomId), { status: 'abandoned' }).catch(() => {});
+        onHome();
+      }
+    } else if (roomId && roomData && roomData.status === 'waiting') {
+      await updateDoc(doc(db, 'rooms', roomId), { status: 'abandoned' }).catch(() => {});
+      onHome();
+    } else {
+      onHome();
+    }
+  };
+
   if (loading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white"><Loader2 className="animate-spin w-8 h-8" /></div>;
 
   if (!user) {
     return (
       <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
-         <button onClick={onHome} className="absolute top-4 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
+         <button onClick={handleHomeClick} className="absolute top-4 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
            <Home className="w-6 h-6" />
         </button>
         <div className="bg-white p-10 rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] text-center max-w-sm w-full">
@@ -210,7 +242,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   if (!roomId) {
     return (
       <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
-        <button onClick={onHome} className="absolute top-4 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
+        <button onClick={handleHomeClick} className="absolute top-4 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
            <Home className="w-6 h-6" />
         </button>
         
@@ -249,6 +281,9 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   if (roomData && roomData.status === 'waiting') {
     return (
       <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
+        <button onClick={handleHomeClick} className="absolute top-4 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
+           <Home className="w-6 h-6" />
+        </button>
         <div className="bg-white p-10 rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] text-center max-w-sm w-full">
            <h2 className="text-xl font-bold text-slate-500 mb-2">請對手輸入此代碼</h2>
            <div className="text-6xl font-black tracking-widest text-indigo-600 mb-8 border-4 border-slate-900 py-4 rounded-3xl bg-indigo-50 shadow-[inset_4px_4px_0px_0px_rgba(15,23,42,0.1)]">
@@ -262,18 +297,20 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     );
   }
 
-  if (!roomData || roomData.status === 'finished') return <div className="min-h-screen bg-[#FDFCF0]"></div>;
+  if (!roomData || roomData.status === 'finished' || roomData.status === 'abandoned') return <div className="min-h-screen bg-[#FDFCF0]"></div>;
 
   const isHost = roomData.hostId === user.uid;
   const question = allQuestions[roomData.questionIndices[roomData.currentIndex]];
   const isEvaluating = !!(roomData.p1Answer && roomData.p2Answer) || (timeLeft === 0);
   const myAnswer = isHost ? roomData.p1Answer : roomData.p2Answer;
   const oppAnswer = isHost ? roomData.p2Answer : roomData.p1Answer;
+  
+  const progress = (roomData.currentIndex / roomData.questionIndices.length) * 100;
 
   return (
     <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl flex justify-between items-end mb-4 px-4 relative">
-        <button onClick={onHome} className="absolute -top-12 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
+        <button onClick={handleHomeClick} className="absolute -top-12 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
            <Home className="w-6 h-6" />
         </button>
 
@@ -298,52 +335,70 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         </div>
       </div>
 
-      <div className="w-full max-w-4xl bg-white rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col min-h-[400px] mt-6 max-h-[60vh]">
-        <div className="p-6 sm:p-8 md:p-12 flex-1 flex flex-col overflow-y-auto">
-          <div className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 mb-10 leading-relaxed whitespace-pre-line text-center shrink-0">
-            {question.id}. {question.text}
-          </div>
+      <div className="w-full max-w-4xl h-3 bg-slate-200 border-4 border-slate-900 rounded-full overflow-hidden mb-2">
+        <motion.div 
+          className="h-full bg-emerald-400 border-r-2 border-slate-900"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.3 }}
+        />
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-auto shrink-0 pb-4">
-            {(['A', 'B', 'C', 'D'] as const).map((optId) => {
-              const text = question.options[optId];
-              const isSelectedByMe = myAnswer === optId;
-              const isSelectedByOpp = oppAnswer === optId;
-              const isCorrectAnswer = optId === question.answer;
-              
-              let btnClass = "border-4 border-slate-900 bg-white text-slate-800 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]";
-              
-              if (isEvaluating) {
-                if (isCorrectAnswer) btnClass = "border-4 border-emerald-500 bg-emerald-400 text-slate-900 font-black scale-[1.02] shadow-[8px_8px_0px_0px_rgba(16,185,129,1)]";
-                else if (isSelectedByMe || isSelectedByOpp) btnClass = "border-4 border-slate-900 bg-slate-200 text-slate-400 opacity-60";
-                else btnClass = "border-4 border-slate-200 bg-slate-50 text-slate-300 opacity-40";
+      <div className="w-full max-w-4xl bg-white rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col min-h-[400px] mt-2 max-h-[60vh] relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={roomData.currentIndex}
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            transition={{ duration: 0.2 }}
+            className="p-6 sm:p-8 md:p-12 flex-1 flex flex-col overflow-y-auto"
+          >
+            <div className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 mb-10 leading-relaxed whitespace-pre-line text-center shrink-0">
+              {question.id}. {question.text}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-auto shrink-0 pb-4">
+              {(['A', 'B', 'C', 'D'] as const).map((optId) => {
+                const text = question.options[optId];
+                const isSelectedByMe = myAnswer === optId;
+                const isSelectedByOpp = oppAnswer === optId;
+                const isCorrectAnswer = optId === question.answer;
                 
-                if (isSelectedByMe && isSelectedByOpp && !isCorrectAnswer) btnClass = "border-4 border-purple-900 bg-purple-200 text-slate-400 opacity-60";
-                else if (isSelectedByMe && !isCorrectAnswer) btnClass = "border-4 border-indigo-900 bg-indigo-100 text-slate-400 opacity-60";
-                else if (isSelectedByOpp && !isCorrectAnswer) btnClass = "border-4 border-rose-900 bg-rose-100 text-slate-400 opacity-60";
-              } else {
-                 if (isSelectedByMe) btnClass = "border-4 border-indigo-900 bg-indigo-200 shadow-none translate-x-[2px] translate-y-[2px]";
-                 else if (!myAnswer) btnClass += " hover:bg-slate-50 active:translate-y-1 active:shadow-none cursor-pointer";
-              }
+                let btnClass = "border-4 border-slate-900 bg-white text-slate-800 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]";
+                
+                if (isEvaluating) {
+                  if (isCorrectAnswer) btnClass = "border-4 border-emerald-500 bg-emerald-400 text-slate-900 font-black scale-[1.02] shadow-[8px_8px_0px_0px_rgba(16,185,129,1)]";
+                  else if (isSelectedByMe || isSelectedByOpp) btnClass = "border-4 border-slate-900 bg-slate-200 text-slate-400 opacity-60";
+                  else btnClass = "border-4 border-slate-200 bg-slate-50 text-slate-300 opacity-40";
+                  
+                  if (isSelectedByMe && isSelectedByOpp && !isCorrectAnswer) btnClass = "border-4 border-purple-900 bg-purple-200 text-slate-400 opacity-60";
+                  else if (isSelectedByMe && !isCorrectAnswer) btnClass = "border-4 border-indigo-900 bg-indigo-100 text-slate-400 opacity-60";
+                  else if (isSelectedByOpp && !isCorrectAnswer) btnClass = "border-4 border-rose-900 bg-rose-100 text-slate-400 opacity-60";
+                } else {
+                   if (isSelectedByMe) btnClass = "border-4 border-indigo-900 bg-indigo-200 shadow-none translate-x-[2px] translate-y-[2px]";
+                   else if (!myAnswer) btnClass += " hover:bg-slate-50 active:translate-y-1 active:shadow-none cursor-pointer";
+                }
 
-              return (
-                <div
-                  key={optId}
-                  onClick={() => { if (!myAnswer && !isEvaluating) handleSelect(optId); }}
-                  className={`p-6 rounded-[2rem] transition-all duration-300 flex flex-col items-center justify-center text-center relative ${btnClass}`}
-                >
-                  {isSelectedByMe && isEvaluating && <div className="absolute top-0 left-4 max-w-fit px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">你的選擇</div>}
-                  {isSelectedByOpp && isEvaluating && <div className="absolute top-0 right-4 max-w-fit px-3 py-1 bg-rose-500 text-white font-black text-xs rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">對手選擇</div>}
+                return (
+                  <div
+                    key={optId}
+                    onClick={() => { if (!myAnswer && !isEvaluating) handleSelect(optId); }}
+                    className={`p-6 rounded-[2rem] transition-all duration-300 flex flex-col items-center justify-center text-center relative ${btnClass}`}
+                  >
+                    {isSelectedByMe && isEvaluating && <div className="absolute top-0 left-4 max-w-fit px-3 py-1 bg-indigo-600 text-white font-black text-xs rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">你的選擇</div>}
+                    {isSelectedByOpp && isEvaluating && <div className="absolute top-0 right-4 max-w-fit px-3 py-1 bg-rose-500 text-white font-black text-xs rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">對手選擇</div>}
 
-                  <div className="text-lg sm:text-xl font-bold mt-2"><span className="opacity-60 mr-1">({optId})</span> {text}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                    <div className="text-lg sm:text-xl font-bold mt-2"><span className="opacity-60 mr-1">({optId})</span> {text}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        </AnimatePresence>
 
         {isEvaluating && (
-          <div className="flex w-full text-center text-base sm:text-lg font-black border-t-4 border-slate-900">
+          <div className="flex w-full text-center text-base sm:text-lg font-black border-t-4 border-slate-900 shrink-0 relative z-10">
             <div className={`flex-1 p-3 sm:p-4 border-r-4 border-slate-900 ${myAnswer === question.answer ? 'bg-emerald-400 text-slate-900' : (myAnswer ? 'bg-rose-400 text-white' : 'bg-slate-200 text-slate-500')}`}>
                你 {myAnswer === question.answer ? '正確(+1)' : (myAnswer ? '錯誤(-1)' : '未作答')}
             </div>

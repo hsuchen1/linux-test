@@ -17,7 +17,7 @@ service cloud.firestore {
       return data.keys().hasAll(['hostId', 'hostName', 'status', 'currentIndex', 'p1Score', 'p2Score', 'createdAt'])
         && data.hostId is string && data.hostId.size() <= 128
         && data.hostName is string && data.hostName.size() <= 50
-        && data.status in ['waiting', 'playing', 'finished']
+        && data.status in ['waiting', 'playing', 'finished', 'abandoned']
         && data.currentIndex is number
         && data.p1Score is number
         && data.p2Score is number

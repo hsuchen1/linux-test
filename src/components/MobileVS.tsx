@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Question, WrongAnswer } from '../types';
 import { Home } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface MobileVSProps {
   questions: Question[];
@@ -19,6 +20,12 @@ export function MobileVS({ questions, onFinish, onHome }: MobileVSProps) {
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
 
   const question = questions[currentIndex];
+
+  const handleHomeClick = () => {
+    if (window.confirm("確定要離開嗎？此舉將直接結束這場對戰。")) {
+      onHome();
+    }
+  };
 
   const evaluateAndNext = (finalP1Ans: string | null, finalP2Ans: string | null) => {
     setIsEvaluating(true);
@@ -152,11 +159,13 @@ export function MobileVS({ questions, onFinish, onHome }: MobileVSProps) {
     );
   };
 
+  const progress = (currentIndex / questions.length) * 100;
+
   return (
     <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-slate-900 font-sans">
       
       <div className="flex h-16 bg-slate-900 text-white items-center justify-between px-4 border-b-4 border-slate-700 z-20">
-        <button onClick={onHome} className="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg transition-colors border-2 border-slate-800">
+        <button onClick={handleHomeClick} className="bg-slate-700 hover:bg-slate-600 p-2 rounded-lg transition-colors border-2 border-slate-800">
            <Home className="w-6 h-6 text-white" />
         </button>
         
@@ -171,9 +180,29 @@ export function MobileVS({ questions, onFinish, onHome }: MobileVSProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-row w-full divide-x-4 divide-slate-900 relative">
-        <PlayerBoard player={1} />
-        <PlayerBoard player={2} />
+      <div className="w-full h-2 bg-slate-800 border-b-2 border-slate-900 z-20 shrink-0">
+        <motion.div 
+          className="h-full bg-emerald-400 border-r-2 border-emerald-500"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.3 }}
+        />
+      </div>
+
+      <div className="flex-1 w-full relative overflow-hidden bg-slate-50">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentIndex}
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            transition={{ duration: 0.2 }}
+            className="w-full h-full flex flex-row divide-x-4 divide-slate-900 absolute inset-0"
+          >
+            <PlayerBoard player={1} />
+            <PlayerBoard player={2} />
+          </motion.div>
+        </AnimatePresence>
       </div>
 
     </div>

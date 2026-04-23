@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Question, WrongAnswer } from '../types';
 import { Home, Keyboard } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface DesktopVSProps {
   questions: Question[];
@@ -19,6 +20,12 @@ export function DesktopVS({ questions, onFinish, onHome }: DesktopVSProps) {
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
 
   const question = questions[currentIndex];
+
+  const handleHomeClick = () => {
+    if (window.confirm("確定要離開嗎？此舉將直接結束這場對戰。")) {
+      onHome();
+    }
+  };
 
   const evaluateAndNext = (finalP1Ans: string | null, finalP2Ans: string | null) => {
     setIsEvaluating(true);
@@ -140,50 +147,68 @@ export function DesktopVS({ questions, onFinish, onHome }: DesktopVSProps) {
         </div>
       </div>
 
-      <div className="w-full max-w-4xl bg-white rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col min-h-[500px] mt-6 max-h-[60vh]">
-        <div className="p-8 md:p-12 flex-1 flex flex-col overflow-y-auto">
-          <div className="text-2xl md:text-3xl font-black text-slate-900 mb-10 leading-relaxed whitespace-pre-line text-center shrink-0">
-            {question.id}. {question.text}
-          </div>
+      <div className="w-full max-w-4xl h-3 bg-slate-200 border-4 border-slate-900 rounded-full overflow-hidden mb-2">
+        <motion.div 
+          className="h-full bg-emerald-400 border-r-2 border-slate-900"
+          initial={{ width: 0 }}
+          animate={{ width: `${(currentIndex / questions.length) * 100}%` }}
+          transition={{ duration: 0.3 }}
+        />
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-auto shrink-0 pb-4">
-            {(['A', 'B', 'C', 'D'] as const).map((optId, idx) => {
-              const text = question.options[optId];
-              const isP1 = p1Answer === optId;
-              const isP2 = p2Answer === optId;
-              const isCorrectAnswer = optId === question.answer;
-              
-              let btnClass = "border-4 border-slate-900 bg-white text-slate-800 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]";
-              
-              if (isEvaluating) {
-                if (isCorrectAnswer) btnClass = "border-4 border-emerald-500 bg-emerald-400 text-slate-900 font-black scale-[1.02] shadow-[8px_8px_0px_0px_rgba(16,185,129,1)]";
-                else if (isP1 || isP2) btnClass = "border-4 border-slate-900 bg-slate-200 text-slate-400 opacity-60";
-                else btnClass = "border-4 border-slate-200 bg-slate-50 text-slate-300 opacity-40";
+      <div className="w-full max-w-4xl bg-white rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col min-h-[500px] mt-2 max-h-[60vh] relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentIndex}
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            transition={{ duration: 0.2 }}
+            className="p-8 md:p-12 flex-1 flex flex-col overflow-y-auto"
+          >
+            <div className="text-2xl md:text-3xl font-black text-slate-900 mb-10 leading-relaxed whitespace-pre-line text-center shrink-0">
+              {question.id}. {question.text}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-auto shrink-0 pb-4">
+              {(['A', 'B', 'C', 'D'] as const).map((optId, idx) => {
+                const text = question.options[optId];
+                const isP1 = p1Answer === optId;
+                const isP2 = p2Answer === optId;
+                const isCorrectAnswer = optId === question.answer;
                 
-                if (isP1 && isP2 && !isCorrectAnswer) btnClass = "border-4 border-purple-900 bg-purple-200 text-slate-400 opacity-60";
-                else if (isP1 && !isCorrectAnswer) btnClass = "border-4 border-indigo-900 bg-indigo-100 text-slate-400 opacity-60";
-                else if (isP2 && !isCorrectAnswer) btnClass = "border-4 border-rose-900 bg-rose-100 text-slate-400 opacity-60";
-              } else {
-                 btnClass += " hover:bg-slate-50";
-              }
+                let btnClass = "border-4 border-slate-900 bg-white text-slate-800 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]";
+                
+                if (isEvaluating) {
+                  if (isCorrectAnswer) btnClass = "border-4 border-emerald-500 bg-emerald-400 text-slate-900 font-black scale-[1.02] shadow-[8px_8px_0px_0px_rgba(16,185,129,1)]";
+                  else if (isP1 || isP2) btnClass = "border-4 border-slate-900 bg-slate-200 text-slate-400 opacity-60";
+                  else btnClass = "border-4 border-slate-200 bg-slate-50 text-slate-300 opacity-40";
+                  
+                  if (isP1 && isP2 && !isCorrectAnswer) btnClass = "border-4 border-purple-900 bg-purple-200 text-slate-400 opacity-60";
+                  else if (isP1 && !isCorrectAnswer) btnClass = "border-4 border-indigo-900 bg-indigo-100 text-slate-400 opacity-60";
+                  else if (isP2 && !isCorrectAnswer) btnClass = "border-4 border-rose-900 bg-rose-100 text-slate-400 opacity-60";
+                } else {
+                   btnClass += " hover:bg-slate-50";
+                }
 
-              return (
-                <div
-                  key={optId}
-                  className={`p-6 rounded-[2rem] transition-all duration-300 flex flex-col items-center justify-center text-center relative ${btnClass}`}
-                >
-                  {isP1 && isEvaluating && <div className="absolute top-0 left-4 max-w-fit px-3 py-1 bg-indigo-600 text-white font-black text-sm rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">P1 選擇</div>}
-                  {isP2 && isEvaluating && <div className="absolute top-0 right-4 max-w-fit px-3 py-1 bg-rose-500 text-white font-black text-sm rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">P2 選擇</div>}
+                return (
+                  <div
+                    key={optId}
+                    className={`p-6 rounded-[2rem] transition-all duration-300 flex flex-col items-center justify-center text-center relative ${btnClass}`}
+                  >
+                    {isP1 && isEvaluating && <div className="absolute top-0 left-4 max-w-fit px-3 py-1 bg-indigo-600 text-white font-black text-sm rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">P1 選擇</div>}
+                    {isP2 && isEvaluating && <div className="absolute top-0 right-4 max-w-fit px-3 py-1 bg-rose-500 text-white font-black text-sm rounded-b-lg border-x-2 border-b-2 border-slate-900 shadow-md transform -translate-y-1">P2 選擇</div>}
 
-                  <div className="text-xl font-bold mt-4 mb-2"><span className="opacity-60 mr-1">({optId})</span> {text}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                    <div className="text-xl font-bold mt-4 mb-2"><span className="opacity-60 mr-1">({optId})</span> {text}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        </AnimatePresence>
 
         {isEvaluating && (
-          <div className="flex w-full text-center text-lg font-black border-t-4 border-slate-900">
+          <div className="flex w-full text-center text-lg font-black border-t-4 border-slate-900 shrink-0 relative z-10">
             <div className={`flex-1 p-4 border-r-4 border-slate-900 ${p1Answer === question.answer ? 'bg-emerald-400 text-slate-900' : (p1Answer ? 'bg-rose-400 text-white' : 'bg-slate-200 text-slate-500')}`}>
                玩家 1 {p1Answer === question.answer ? '正確(+1)' : (p1Answer ? '錯誤(-1)' : '未作答')}
             </div>
