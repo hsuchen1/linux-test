@@ -32,6 +32,36 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+
+    // PWA Auto-Update Logic
+    if ('serviceWorker' in navigator) {
+      // 1. Detect when the new service worker takes over and force a reload to get the new UI
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
+      // 2. Proactively check for updates every time the user brings the app to the foreground
+      const handleVisibilityChange = async () => {
+        if (document.visibilityState === 'visible') {
+          try {
+            const registration = await navigator.serviceWorker.ready;
+            await registration.update();
+          } catch (err) {
+            console.error('Failed to check for SW update:', err);
+          }
+        }
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }
   }, []);
 
   const handleStart = (selectedMode: GameMode, count: number) => {
