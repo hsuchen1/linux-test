@@ -36,9 +36,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
           setRoomData(data);
           
           if (data.status === 'finished') {
-            // Reconstruct wrong answers logic if needed, but for quota we kept it light.
-            // In online VS, we skip robust wrong answer history to save reads, just pass score.
-            onFinish({ p1: data.p1Score, p2: data.p2Score }, []);
+            onFinish({ p1: data.p1Score, p2: data.p2Score }, data.wrongAnswers || []);
           }
         }
       });
@@ -66,7 +64,8 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       p1Answer: null,
       p2Answer: null,
       timerStart: null,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      wrongAnswers: []
     });
     setRoomId(newRoomId);
   };
@@ -157,12 +156,19 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
 
     let newP1Score = roomData.p1Score;
     let newP2Score = roomData.p2Score;
+    let newWrongAnswers = roomData.wrongAnswers || [];
 
     if (roomData.p1Answer === question.answer) newP1Score++;
-    else if (roomData.p1Answer) newP1Score--;
+    else if (roomData.p1Answer) {
+      newP1Score--;
+      newWrongAnswers = [...newWrongAnswers, { question, chosenId: roomData.p1Answer, player: 1 }];
+    }
 
     if (roomData.p2Answer === question.answer) newP2Score++;
-    else if (roomData.p2Answer) newP2Score--;
+    else if (roomData.p2Answer) {
+      newP2Score--;
+      newWrongAnswers = [...newWrongAnswers, { question, chosenId: roomData.p2Answer, player: 2 }];
+    }
 
     setTimeout(async () => {
       const isLast = roomData.currentIndex + 1 >= roomData.questionIndices.length;
@@ -172,6 +178,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         p1Answer: null,
         p2Answer: null,
         timerStart: null,
+        wrongAnswers: newWrongAnswers,
         currentIndex: isLast ? roomData.currentIndex : roomData.currentIndex + 1,
         status: isLast ? 'finished' : 'playing'
       });
