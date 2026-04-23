@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Multiplayer game room",
+      "type": "object",
+      "properties": {
+        "hostId": { "type": "string" },
+        "guestId": { "type": "string", "nullable": true },
+        "hostName": { "type": "string" },
+        "guestName": { "type": "string", "nullable": true },
+        "status": { "type": "string", "enum": ["waiting", "playing", "finished"] },
+        "questionIndices": { "type": "array" },
+        "currentIndex": { "type": "number" },
+        "p1Score": { "type": "number" },
+        "p2Score": { "type": "number" },
+        "p1Answer": { "type": "string", "nullable": true },
+        "p2Answer": { "type": "string", "nullable": true },
+        "timerStart": { "type": "number", "nullable": true },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["hostId", "hostName", "status", "currentIndex", "p1Score", "p2Score", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Multiplayer game rooms"
+    }
+  }
+}

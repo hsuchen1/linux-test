@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['hostId', 'hostName', 'status', 'currentIndex', 'p1Score', 'p2Score', 'createdAt'])
+        && data.hostId is string && data.hostId.size() <= 128
+        && data.hostName is string && data.hostName.size() <= 50
+        && data.status in ['waiting', 'playing', 'finished']
+        && data.currentIndex is number
+        && data.p1Score is number
+        && data.p2Score is number
+        && data.createdAt is number
+        && (data.get('guestId', null) == null || (data.guestId is string && data.guestId.size() <= 128))
+        && (data.get('guestName', null) == null || (data.guestName is string && data.guestName.size() <= 50))
+        && (data.get('p1Answer', null) == null || (data.p1Answer is string && data.p1Answer.size() <= 10))
+        && (data.get('p2Answer', null) == null || (data.p2Answer is string && data.p2Answer.size() <= 10))
+        && (data.get('timerStart', null) == null || data.timerStart is number)
+        && (data.get('questionIndices', null) == null || (data.questionIndices is list && data.questionIndices.size() <= 200));
+    }
+
+    match /rooms/{roomId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (
+        resource.data.status == 'waiting' || 
+        resource.data.hostId == request.auth.uid || 
+        resource.data.guestId == request.auth.uid
+      );
+
+      allow create: if isSignedIn() 
+        && isValidId(roomId)
+        && isValidRoom(incoming())
+        && incoming().hostId == request.auth.uid
+        && incoming().status == 'waiting'
+        && incoming().currentIndex == 0
+        && incoming().p1Score == 0
+        && incoming().p2Score == 0;
+
+      allow update: if isSignedIn() 
+        && isValidRoom(incoming())
+        && incoming().hostId == existing().hostId
+        && (
+          // Action: Guest Join
+          (
+            existing().status == 'waiting' && 
+            incoming().status == 'playing' &&
+            incoming().guestId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'guestId', 'guestName', 'questionIndices'])
+          ) ||
+          // Action: Play (Submit Answer / Advance state)
+          (
+            existing().status == 'playing' &&
+            (request.auth.uid == existing().hostId || request.auth.uid == existing().guestId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'p1Answer', 'p2Answer', 'timerStart', 'currentIndex', 'p1Score', 'p2Score', 'status'
+            ])
+          )
+        );
+
+      allow delete: if isSignedIn() && existing().hostId == request.auth.uid;
+    }
+  }
+}
