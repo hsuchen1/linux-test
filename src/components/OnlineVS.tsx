@@ -107,8 +107,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         const q = query(
           roomsRef,
           where('status', '==', 'waiting'),
-          where('isPublic', '==', true),
-          limit(5)
+          limit(25)
         );
         const snapshot = await getDocs(q);
         if (!isActive) return;
@@ -116,7 +115,16 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         const now = Date.now();
         for (const docSnap of snapshot.docs) {
            const data = docSnap.data();
-           if (docSnap.id !== roomId && data.createdAt < roomData.createdAt && (now - (data.hostPing || data.createdAt) < 45000)) {
+           const inactiveTime = now - (data.hostPing || data.createdAt || 0);
+
+           if (inactiveTime >= 45000) {
+              updateDoc(doc(db, 'rooms', docSnap.id), { status: 'abandoned' }).catch(() => {});
+              continue;
+           }
+
+           if (!data.isPublic || data.hostId === user.uid) continue;
+
+           if (docSnap.id !== roomId && data.createdAt < roomData.createdAt) {
                try {
                  await runTransaction(db, async (transaction) => {
                    const olderRoomRef = doc(db, 'rooms', docSnap.id);
@@ -227,7 +235,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     setIsMatching(true);
     try {
       const roomsRef = collection(db, 'rooms');
-      const q = query(roomsRef, where('status', '==', 'waiting'), where('isPublic', '==', true), limit(5));
+      const q = query(roomsRef, where('status', '==', 'waiting'), limit(25));
       const snapshot = await getDocs(q);
       
       let matchRoomId = null;
@@ -237,14 +245,17 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         const data = docSnap.data();
         const inactiveTime = now - (data.hostPing || data.createdAt || 0);
         
-        if (inactiveTime < 45000) {
-          // Found a valid active room
-          matchRoomId = docSnap.id;
-          break;
-        } else {
-          // Zombie waiting room cleanup
-          updateDoc(docSnap.ref, { status: 'abandoned' }).catch(() => {});
+        if (inactiveTime >= 45000) {
+           // Zombie waiting room cleanup
+           updateDoc(docSnap.ref, { status: 'abandoned' }).catch(() => {});
+           continue;
         }
+
+        if (!data.isPublic || data.hostId === user.uid) continue;
+
+        // Found a valid active room owned by someone else
+        matchRoomId = docSnap.id;
+        break;
       }
       
       if (matchRoomId) {
@@ -603,35 +614,35 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
 
   return (
     <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-4xl flex justify-between items-end mb-4 px-4 relative">
-        <button onClick={handleHomeClick} className="absolute -top-12 left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
-           <Home className="w-6 h-6" />
+      <div className="w-full max-w-4xl flex justify-between items-end mb-2 sm:mb-4 px-2 sm:px-4 relative gap-2">
+        <button onClick={handleHomeClick} className="absolute -top-10 sm:-top-12 left-2 sm:left-4 bg-slate-900 hover:bg-slate-800 text-white p-2 rounded-lg transition-colors border-2 border-slate-700 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:shadow-none active:translate-y-1 active:translate-x-1">
+           <Home className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
 
-        <div className="bg-indigo-400 text-slate-900 px-4 sm:px-6 py-4 rounded-[2rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] w-36 sm:w-56 relative overflow-hidden">
-          {myAnswer && !isEvaluating && <div className="absolute top-0 right-0 bg-indigo-900 text-white text-[10px] sm:text-xs font-black px-2 py-1 rounded-bl-lg">已鎖定</div>}
-          <div className="text-xs sm:text-sm font-black opacity-80 mb-1 flex items-center justify-start gap-1">
+        <div className="bg-indigo-400 text-slate-900 px-3 sm:px-6 py-3 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] sm:shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] flex-1 min-w-0 relative overflow-hidden">
+          {myAnswer && !isEvaluating && <div className="absolute top-0 right-0 bg-indigo-900 text-white text-[9px] sm:text-xs font-black px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-bl-lg">已鎖定</div>}
+          <div className="text-[10px] sm:text-sm font-black opacity-80 mb-0.5 sm:mb-1 w-full flex items-center justify-start gap-1">
             <span className="truncate">{isHost ? roomData.hostName : roomData.guestName}</span>
             <span className="shrink-0">(你)</span>
           </div>
-          <div className="text-3xl sm:text-4xl font-black">{isHost ? roomData.p1Score : roomData.p2Score} 分</div>
+          <div className="text-2xl sm:text-4xl font-black">{isHost ? roomData.p1Score : roomData.p2Score} <span className="text-sm sm:text-xl relative -top-1">分</span></div>
         </div>
         
-        <div className="text-center pb-2 sm:pb-4 flex flex-col items-center gap-1 sm:gap-2 mx-2">
-           <div className={`px-2 sm:px-4 py-1 rounded-full font-black text-slate-900 border-2 text-[10px] sm:text-sm whitespace-nowrap ${timeLeft !== null && timeLeft <= 3 ? 'bg-rose-400 border-rose-900 animate-pulse text-white' : 'bg-white border-slate-900'}`}>
-              {timeLeft !== null && !isEvaluating ? `⏳ 剩餘 ${timeLeft} 秒` : (isEvaluating ? '判定中' : '搶答階段')}
+        <div className="text-center pb-0 sm:pb-2 flex flex-col items-center gap-1 shrink-0 px-1">
+           <div className={`px-2 sm:px-4 py-0.5 sm:py-1 rounded-full font-black text-slate-900 border-2 text-[10px] sm:text-sm whitespace-nowrap ${timeLeft !== null && timeLeft <= 3 ? 'bg-rose-400 border-rose-900 animate-pulse text-white' : 'bg-white border-slate-900'}`}>
+              {timeLeft !== null && !isEvaluating ? `⏳剩餘${timeLeft}秒` : (isEvaluating ? '判定中' : '搶答')}
            </div>
            <div className="text-xl sm:text-2xl font-black text-slate-900 hidden sm:block">VS</div>
-           <div className="font-bold text-slate-600 text-[10px] sm:text-sm whitespace-nowrap">第 {roomData.currentIndex + 1} / {roomData.questionIndices.length} 題</div>
+           <div className="font-bold text-slate-600 text-[10px] sm:text-sm whitespace-nowrap">第 {roomData.currentIndex + 1}/{roomData.questionIndices.length}</div>
         </div>
 
-        <div className="bg-rose-400 text-slate-900 px-4 sm:px-6 py-4 rounded-[2rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] w-36 sm:w-56 text-right flex flex-col items-end relative overflow-hidden">
-          {oppAnswer && !isEvaluating && <div className="absolute top-0 left-0 bg-rose-900 text-white text-[10px] sm:text-xs font-black px-2 py-1 rounded-br-lg">已鎖定</div>}
-          <div className="text-xs sm:text-sm font-black opacity-80 mb-1 flex items-center justify-end gap-1 w-full">
+        <div className="bg-rose-400 text-slate-900 px-3 sm:px-6 py-3 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] sm:shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] flex-1 min-w-0 text-right flex flex-col items-end relative overflow-hidden">
+          {oppAnswer && !isEvaluating && <div className="absolute top-0 left-0 bg-rose-900 text-white text-[9px] sm:text-xs font-black px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-br-lg">已鎖定</div>}
+          <div className="text-[10px] sm:text-sm font-black opacity-80 mb-0.5 sm:mb-1 w-full flex items-center justify-end gap-1">
             <span className="truncate">{isHost ? roomData.guestName : roomData.hostName}</span>
             <span className="shrink-0">(對手)</span>
           </div>
-          <div className="text-3xl sm:text-4xl font-black">{isHost ? roomData.p2Score : roomData.p1Score} 分</div>
+          <div className="text-2xl sm:text-4xl font-black">{isHost ? roomData.p2Score : roomData.p1Score} <span className="text-sm sm:text-xl relative -top-1">分</span></div>
         </div>
       </div>
 
