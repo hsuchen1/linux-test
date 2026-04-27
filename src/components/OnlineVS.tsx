@@ -4,7 +4,7 @@ import { Home, LogIn, Users, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { db, auth, signInWithGoogle } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, doc, setDoc, onSnapshot, updateDoc, getDoc, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, updateDoc, getDoc, query, where, getDocs, limit, runTransaction } from 'firebase/firestore';
 
 interface OnlineVSProps {
   allQuestions: Question[];
@@ -98,6 +98,60 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   }, [roomId, user]);
 
   useEffect(() => {
+    if (!roomId || !roomData || roomData.status !== 'waiting' || !roomData.isPublic || !user || roomData.hostId !== user.uid) return;
+
+    let isActive = true;
+    const pollOtherRooms = async () => {
+      try {
+        const roomsRef = collection(db, 'rooms');
+        const q = query(
+          roomsRef,
+          where('status', '==', 'waiting'),
+          where('isPublic', '==', true),
+          limit(5)
+        );
+        const snapshot = await getDocs(q);
+        if (!isActive) return;
+
+        const now = Date.now();
+        for (const docSnap of snapshot.docs) {
+           const data = docSnap.data();
+           if (docSnap.id !== roomId && data.createdAt < roomData.createdAt && (now - (data.hostPing || data.createdAt) < 45000)) {
+               try {
+                 await runTransaction(db, async (transaction) => {
+                   const olderRoomRef = doc(db, 'rooms', docSnap.id);
+                   const olderRoomSnap = await transaction.get(olderRoomRef);
+                   if (!olderRoomSnap.exists() || olderRoomSnap.data().status !== 'waiting') {
+                     throw new Error('cannot join');
+                   }
+                   transaction.update(olderRoomRef, {
+                     guestId: user.uid,
+                     guestName: user.displayName || 'Player 2',
+                     status: 'playing',
+                     isPublic: false,
+                     guestPing: Date.now()
+                   });
+                 });
+                 // Joined older room! Abandon current room.
+                 await updateDoc(doc(db, 'rooms', roomId), { status: 'abandoned' }).catch(() => {});
+                 setRoomId(docSnap.id);
+                 break;
+               } catch (e) {
+                 // transaction failed, just try next or wait for next poll
+               }
+           }
+        }
+      } catch (err) {}
+    };
+
+    const intervalId = setInterval(pollOtherRooms, 3000);
+    return () => {
+      isActive = false;
+      clearInterval(intervalId);
+    };
+  }, [roomId, roomData?.status, roomData?.isPublic, roomData?.createdAt, user]);
+
+  useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Browsers often ignore async requests here, but we can try
       if (roomId && roomData && roomData.status === 'playing') {
@@ -142,26 +196,29 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   const handleJoinRoom = async () => {
     if (!user || !joinCode) return;
     const code = joinCode.toUpperCase();
+    setError('');
     
-    const roomRef = doc(db, 'rooms', code);
-    const snap = await getDoc(roomRef);
-    if (!snap.exists()) {
-       setError('找不到此房間');
-       return;
+    try {
+      const roomRef = doc(db, 'rooms', code);
+      await runTransaction(db, async (transaction) => {
+        const roomDoc = await transaction.get(roomRef);
+        if (!roomDoc.exists()) {
+           throw new Error('找不到此房間');
+        }
+        if (roomDoc.data().status !== 'waiting') {
+           throw new Error('房間已滿或遊戲已開始');
+        }
+        transaction.update(roomRef, {
+          guestId: user.uid,
+          guestName: user.displayName || 'Player 2',
+          status: 'playing',
+          guestPing: Date.now()
+        });
+      });
+      setRoomId(code);
+    } catch (err: any) {
+      setError(err.message);
     }
-    const data = snap.data();
-    if (data.status !== 'waiting') {
-       setError('房間已開始或已結束');
-       return;
-    }
-
-    await updateDoc(roomRef, {
-      guestId: user.uid,
-      guestName: user.displayName || 'Player 2',
-      status: 'playing',
-      guestPing: Date.now()
-    });
-    setRoomId(code);
   };
 
   const handleRandomMatch = async () => {
@@ -180,7 +237,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         const data = docSnap.data();
         const inactiveTime = now - (data.hostPing || data.createdAt || 0);
         
-        if (inactiveTime < 15000) {
+        if (inactiveTime < 45000) {
           // Found a valid active room
           matchRoomId = docSnap.id;
           break;
@@ -192,14 +249,27 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       
       if (matchRoomId) {
         // join existing public room
-        await updateDoc(doc(db, 'rooms', matchRoomId), {
-           guestId: user.uid,
-           guestName: user.displayName || 'Player 2',
-           status: 'playing',
-           isPublic: false,
-           guestPing: Date.now()
-        });
-        setRoomId(matchRoomId);
+        try {
+          await runTransaction(db, async (transaction) => {
+            const roomRef = doc(db, 'rooms', matchRoomId);
+            const roomDoc = await transaction.get(roomRef);
+            if (!roomDoc.exists() || roomDoc.data().status !== 'waiting') {
+              throw new Error("Cannot join");
+            }
+            transaction.update(roomRef, {
+               guestId: user.uid,
+               guestName: user.displayName || 'Player 2',
+               status: 'playing',
+               isPublic: false,
+               guestPing: Date.now()
+            });
+          });
+          setRoomId(matchRoomId);
+          setIsMatching(false);
+          return;
+        } catch (err) {
+          console.warn("Matchmaking join collision, creating new room instead", err);
+        }
       } else {
         // create new public room
         const newId = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -538,24 +608,30 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
            <Home className="w-6 h-6" />
         </button>
 
-        <div className="bg-indigo-400 text-slate-900 px-6 py-4 rounded-[2rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] w-48 sm:w-56 relative overflow-hidden">
-          {myAnswer && !isEvaluating && <div className="absolute top-0 right-0 bg-indigo-900 text-white text-xs font-black px-2 py-1 rounded-bl-lg">已鎖定</div>}
-          <div className="text-sm font-black opacity-80 mb-1 line-clamp-1">{isHost ? roomData.hostName : roomData.guestName} (你)</div>
-          <div className="text-4xl font-black">{isHost ? roomData.p1Score : roomData.p2Score} 分</div>
+        <div className="bg-indigo-400 text-slate-900 px-4 sm:px-6 py-4 rounded-[2rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] w-36 sm:w-56 relative overflow-hidden">
+          {myAnswer && !isEvaluating && <div className="absolute top-0 right-0 bg-indigo-900 text-white text-[10px] sm:text-xs font-black px-2 py-1 rounded-bl-lg">已鎖定</div>}
+          <div className="text-xs sm:text-sm font-black opacity-80 mb-1 flex items-center justify-start gap-1">
+            <span className="truncate">{isHost ? roomData.hostName : roomData.guestName}</span>
+            <span className="shrink-0">(你)</span>
+          </div>
+          <div className="text-3xl sm:text-4xl font-black">{isHost ? roomData.p1Score : roomData.p2Score} 分</div>
         </div>
         
-        <div className="text-center pb-4 flex flex-col items-center gap-2">
-           <div className={`px-4 py-1 rounded-full font-black text-slate-900 border-2 ${timeLeft !== null && timeLeft <= 3 ? 'bg-rose-400 border-rose-900 animate-pulse text-white' : 'bg-white border-slate-900'}`}>
+        <div className="text-center pb-2 sm:pb-4 flex flex-col items-center gap-1 sm:gap-2 mx-2">
+           <div className={`px-2 sm:px-4 py-1 rounded-full font-black text-slate-900 border-2 text-[10px] sm:text-sm whitespace-nowrap ${timeLeft !== null && timeLeft <= 3 ? 'bg-rose-400 border-rose-900 animate-pulse text-white' : 'bg-white border-slate-900'}`}>
               {timeLeft !== null && !isEvaluating ? `⏳ 剩餘 ${timeLeft} 秒` : (isEvaluating ? '判定中' : '搶答階段')}
            </div>
-           <div className="text-2xl font-black text-slate-900 hidden sm:block">VS</div>
-           <div className="font-bold text-slate-600">第 {roomData.currentIndex + 1} / {roomData.questionIndices.length} 題</div>
+           <div className="text-xl sm:text-2xl font-black text-slate-900 hidden sm:block">VS</div>
+           <div className="font-bold text-slate-600 text-[10px] sm:text-sm whitespace-nowrap">第 {roomData.currentIndex + 1} / {roomData.questionIndices.length} 題</div>
         </div>
 
-        <div className="bg-rose-400 text-slate-900 px-6 py-4 rounded-[2rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] w-48 sm:w-56 text-right flex flex-col items-end relative overflow-hidden">
-          {oppAnswer && !isEvaluating && <div className="absolute top-0 left-0 bg-rose-900 text-white text-xs font-black px-2 py-1 rounded-br-lg">已鎖定</div>}
-          <div className="text-sm font-black opacity-80 mb-1 w-full text-right line-clamp-1">{isHost ? roomData.guestName : roomData.hostName} (對手)</div>
-          <div className="text-4xl font-black">{isHost ? roomData.p2Score : roomData.p1Score} 分</div>
+        <div className="bg-rose-400 text-slate-900 px-4 sm:px-6 py-4 rounded-[2rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] w-36 sm:w-56 text-right flex flex-col items-end relative overflow-hidden">
+          {oppAnswer && !isEvaluating && <div className="absolute top-0 left-0 bg-rose-900 text-white text-[10px] sm:text-xs font-black px-2 py-1 rounded-br-lg">已鎖定</div>}
+          <div className="text-xs sm:text-sm font-black opacity-80 mb-1 flex items-center justify-end gap-1 w-full">
+            <span className="truncate">{isHost ? roomData.guestName : roomData.hostName}</span>
+            <span className="shrink-0">(對手)</span>
+          </div>
+          <div className="text-3xl sm:text-4xl font-black">{isHost ? roomData.p2Score : roomData.p1Score} 分</div>
         </div>
       </div>
 
