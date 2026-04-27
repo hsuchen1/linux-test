@@ -160,16 +160,18 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   }, [roomId, roomData?.status, roomData?.isPublic, roomData?.createdAt, user]);
 
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = () => {
       // Browsers often ignore async requests here, but we can try
-      if (roomId && roomData && roomData.status === 'playing') {
+      if (roomId && roomData && (roomData.status === 'playing' || roomData.status === 'waiting')) {
          // Fire and forget
          updateDoc(doc(db, 'rooms', roomId), { status: 'abandoned' }).catch(() => {});
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
     };
   }, [roomId, roomData?.status]);
 

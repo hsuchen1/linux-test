@@ -29,7 +29,9 @@ service cloud.firestore {
         && (data.get('p2Answer', null) == null || (data.p2Answer is string && data.p2Answer.size() <= 10))
         && (data.get('timerStart', null) == null || data.timerStart is number)
         && (data.get('questionIndices', null) == null || (data.questionIndices is list && data.questionIndices.size() <= 200))
-        && (data.get('wrongAnswers', null) == null || (data.wrongAnswers is list && data.wrongAnswers.size() <= 200));
+        && (data.get('wrongAnswers', null) == null || (data.wrongAnswers is list && data.wrongAnswers.size() <= 200))
+        && (data.get('hostPing', null) == null || data.hostPing is number)
+        && (data.get('guestPing', null) == null || data.guestPing is number);
     }
 
     match /rooms/{roomId} {
@@ -51,14 +53,31 @@ service cloud.firestore {
 
       allow update: if isSignedIn() 
         && isValidRoom(incoming())
-        && incoming().hostId == existing().hostId
         && (
+          // Host updating ping
+          (
+            existing().status == 'waiting' &&
+            incoming().hostId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['hostPing'])
+          ) ||
+          // Anyone updating ping while playing
+          (
+            existing().status == 'playing' &&
+            (incoming().hostId == request.auth.uid || incoming().guestId == request.auth.uid) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['hostPing', 'guestPing'])
+          ) ||
+          // Abandoning room
+          (
+            incoming().status == 'abandoned' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
+            (request.auth.uid == existing().hostId || request.auth.uid == existing().guestId || existing().status == 'waiting')
+          ) ||
           // Action: Guest Join
           (
             existing().status == 'waiting' && 
             incoming().status == 'playing' &&
             incoming().guestId == request.auth.uid &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'guestId', 'guestName', 'questionIndices', 'isPublic'])
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'guestId', 'guestName', 'questionIndices', 'isPublic', 'guestPing'])
           ) ||
           // Action: Play (Submit Answer / Advance state)
           (
