@@ -21,6 +21,12 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState('');
   const [isMatching, setIsMatching] = useState(false);
+  const [showVSAnim, setShowVSAnim] = useState(false);
+
+  const roomDataRef = useRef<any>(null);
+  useEffect(() => {
+    roomDataRef.current = roomData;
+  }, [roomData]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
@@ -35,6 +41,14 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       const unsub = onSnapshot(doc(db, 'rooms', roomId), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
+          
+          if (roomDataRef.current?.status === 'waiting' && data.status === 'playing') {
+            setShowVSAnim(true);
+            setTimeout(() => {
+              setShowVSAnim(false);
+            }, 3500);
+          }
+
           setRoomData(data);
           
           if (data.status === 'finished') {
@@ -50,11 +64,6 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       return unsub;
     }
   }, [roomId, onFinish]);
-
-  const roomDataRef = useRef<any>(null);
-  useEffect(() => {
-    roomDataRef.current = roomData;
-  }, [roomData]);
 
   useEffect(() => {
     if (!roomId || !user) return;
@@ -439,6 +448,75 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
              {roomData?.isPublic ? '尋找對手中...' : '等待玩家加入...'}
            </p>
         </div>
+      </div>
+    );
+  }
+
+  if (showVSAnim && roomData && roomData.status === 'playing') {
+    const isHostLocal = roomData.hostId === user?.uid;
+    const myName = isHostLocal ? roomData.hostName : roomData.guestName;
+    const oppName = isHostLocal ? roomData.guestName : roomData.hostName;
+
+    return (
+      <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center p-4 overflow-hidden relative">
+        {/* Animated Background Pattern */}
+        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 to-transparent"></div>
+        
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-8 sm:gap-16 z-10 w-full max-w-4xl relative">
+          {/* Player 1 (You) */}
+          <motion.div 
+            initial={{ x: -150, opacity: 0, rotate: -20 }}
+            animate={{ x: 0, opacity: 1, rotate: -6 }}
+            transition={{ type: "spring", bounce: 0.5, duration: 0.8 }}
+            className="flex flex-col items-center"
+          >
+            <div className="w-32 h-32 md:w-48 md:h-48 bg-indigo-500 rounded-[3rem] border-8 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] flex items-center justify-center mb-6 relative overflow-hidden">
+              <span className="text-6xl md:text-8xl relative z-10 block">😎</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-black text-slate-900 px-6 sm:px-8 py-3 sm:py-4 bg-white border-4 border-slate-900 rounded-3xl transform shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] text-center line-clamp-1 max-w-[200px] sm:max-w-[250px]">
+              {myName}
+            </h2>
+            <div className="bg-indigo-600 text-white font-black px-4 py-1 mt-2 rounded-full border-2 border-slate-900 shadow-sm max-w-fit mx-auto transform -translate-y-4">你</div>
+          </motion.div>
+
+          {/* VS badge */}
+          <motion.div
+            initial={{ scale: 0, rotate: 180 }}
+            animate={{ scale: 1, rotate: 12 }}
+            transition={{ type: "spring", bounce: 0.6, duration: 0.8, delay: 0.3 }}
+            className="z-20 my-4 md:my-0"
+          >
+            <div className="bg-amber-400 text-slate-900 font-black text-5xl md:text-7xl p-6 sm:p-8 rounded-full border-8 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] relative">
+              <span className="relative z-10 block transform -skew-x-12">VS</span>
+            </div>
+          </motion.div>
+
+          {/* Player 2 (Opponent) */}
+          <motion.div 
+            initial={{ x: 150, opacity: 0, rotate: 20 }}
+            animate={{ x: 0, opacity: 1, rotate: 6 }}
+            transition={{ type: "spring", bounce: 0.5, duration: 0.8, delay: 0.1 }}
+            className="flex flex-col items-center"
+          >
+            <div className="w-32 h-32 md:w-48 md:h-48 bg-rose-500 rounded-[3rem] border-8 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] flex items-center justify-center mb-6 relative overflow-hidden">
+              <span className="text-6xl md:text-8xl relative z-10 block">😈</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-black text-slate-900 px-6 sm:px-8 py-3 sm:py-4 bg-white border-4 border-slate-900 rounded-3xl transform shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] text-center line-clamp-1 max-w-[200px] sm:max-w-[250px]">
+              {oppName}
+            </h2>
+            <div className="bg-rose-600 text-white font-black px-4 py-1 mt-2 rounded-full border-2 border-slate-900 shadow-sm max-w-fit mx-auto transform -translate-y-4">對手</div>
+          </motion.div>
+        </div>
+
+        {/* Ready text */}
+        <motion.div
+           initial={{ y: 50, opacity: 0 }}
+           animate={{ y: 0, opacity: 1 }}
+           transition={{ duration: 0.5, delay: 1.2 }}
+           className="absolute bottom-8 sm:bottom-16 text-xl sm:text-2xl md:text-4xl font-black text-slate-600 animate-pulse tracking-widest"
+        >
+          準備對戰...
+        </motion.div>
       </div>
     );
   }
