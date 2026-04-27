@@ -658,7 +658,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         </div>
       </div>
 
-      <div className="w-full max-w-4xl h-3 bg-slate-200 border-4 border-slate-900 rounded-full overflow-hidden mb-2">
+      <div className="w-full max-w-4xl h-5 sm:h-6 bg-slate-200 border-4 border-slate-900 rounded-full overflow-hidden mb-2 mt-1 sm:mt-2 shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] sm:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
         <motion.div 
           className="h-full bg-emerald-400 border-r-2 border-slate-900"
           initial={{ width: 0 }}
