@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GameMode, Question, WrongAnswer } from '../types';
 import { Home, LogIn, Users, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -51,6 +51,43 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     }
   }, [roomId, onFinish]);
 
+  const roomDataRef = useRef<any>(null);
+  useEffect(() => {
+    roomDataRef.current = roomData;
+  }, [roomData]);
+
+  useEffect(() => {
+    if (!roomId || !user) return;
+    
+    // Heartbeat & Zombie Detection
+    const interval = setInterval(() => {
+      const data = roomDataRef.current;
+      if (!data) return;
+
+      // 1. Send ping
+      if (data.status === 'playing' || data.status === 'waiting') {
+        const pingField = data.hostId === user.uid ? 'hostPing' : 'guestPing';
+        // Only update if it's been a while, to save writes
+        const lastPing = data[pingField];
+        if (!lastPing || Date.now() - lastPing > 14000) {
+          updateDoc(doc(db, 'rooms', roomId), { [pingField]: Date.now() }).catch(() => {});
+        }
+      }
+      
+      // 2. Detect zombie opponent
+      if (data.status === 'playing') {
+        const isHost = data.hostId === user.uid;
+        const otherPing = isHost ? data.guestPing : data.hostPing;
+        // If opponent hasn't pinged for 45 seconds, abandon room
+        if (otherPing && Date.now() - otherPing > 45000) {
+          updateDoc(doc(db, 'rooms', roomId), { status: 'abandoned' }).catch(() => {});
+        }
+      }
+    }, 15000); // Check every 15 seconds
+    
+    return () => clearInterval(interval);
+  }, [roomId, user]);
+
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Browsers often ignore async requests here, but we can try
@@ -86,6 +123,8 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       p2Answer: null,
       timerStart: null,
       createdAt: Date.now(),
+      hostPing: Date.now(),
+      guestPing: null,
       wrongAnswers: []
     });
     setRoomId(newRoomId);
@@ -110,7 +149,8 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     await updateDoc(roomRef, {
       guestId: user.uid,
       guestName: user.displayName || 'Player 2',
-      status: 'playing'
+      status: 'playing',
+      guestPing: Date.now()
     });
     setRoomId(code);
   };
@@ -121,19 +161,34 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     setIsMatching(true);
     try {
       const roomsRef = collection(db, 'rooms');
-      const q = query(roomsRef, where('status', '==', 'waiting'), where('isPublic', '==', true), limit(1));
+      const q = query(roomsRef, where('status', '==', 'waiting'), where('isPublic', '==', true), limit(5));
       const snapshot = await getDocs(q);
       
-      if (!snapshot.empty) {
-        // join existing public room
-        const docSnap = snapshot.docs[0];
-        const matchRoomId = docSnap.id;
+      let matchRoomId = null;
+      const now = Date.now();
+
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const inactiveTime = now - (data.hostPing || data.createdAt || 0);
         
+        if (inactiveTime < 15000) {
+          // Found a valid active room
+          matchRoomId = docSnap.id;
+          break;
+        } else {
+          // Zombie waiting room cleanup
+          updateDoc(docSnap.ref, { status: 'abandoned' }).catch(() => {});
+        }
+      }
+      
+      if (matchRoomId) {
+        // join existing public room
         await updateDoc(doc(db, 'rooms', matchRoomId), {
            guestId: user.uid,
            guestName: user.displayName || 'Player 2',
            status: 'playing',
-           isPublic: false
+           isPublic: false,
+           guestPing: Date.now()
         });
         setRoomId(matchRoomId);
       } else {
@@ -157,6 +212,8 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
           questionIndices: selected,
           wrongAnswers: [],
           createdAt: Date.now(),
+          hostPing: Date.now(),
+          guestPing: null,
           isPublic: true
         });
         setRoomId(newId);
@@ -369,12 +426,17 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
            <Home className="w-6 h-6" />
         </button>
         <div className="bg-white p-10 rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] text-center max-w-sm w-full">
-           <h2 className="text-xl font-bold text-slate-500 mb-2">請對手輸入此代碼</h2>
-           <div className="text-6xl font-black tracking-widest text-indigo-600 mb-8 border-4 border-slate-900 py-4 rounded-3xl bg-indigo-50 shadow-[inset_4px_4px_0px_0px_rgba(15,23,42,0.1)]">
-             {roomId}
-           </div>
+           <h2 className="text-xl font-bold text-slate-500 mb-2">
+             {roomData?.isPublic ? '隨機配對中' : '請對手輸入此代碼'}
+           </h2>
+           {!roomData?.isPublic && (
+             <div className="text-6xl font-black tracking-widest text-indigo-600 mb-8 border-4 border-slate-900 py-4 rounded-3xl bg-indigo-50 shadow-[inset_4px_4px_0px_0px_rgba(15,23,42,0.1)]">
+               {roomId}
+             </div>
+           )}
            <p className="text-slate-600 font-bold flex items-center justify-center gap-2">
-             <Loader2 className="w-5 h-5 animate-spin" /> 等待玩家加入...
+             <Loader2 className="w-5 h-5 animate-spin" /> 
+             {roomData?.isPublic ? '尋找對手中...' : '等待玩家加入...'}
            </p>
         </div>
       </div>
