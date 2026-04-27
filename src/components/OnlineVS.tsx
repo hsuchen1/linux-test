@@ -117,14 +117,14 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
            const data = docSnap.data();
            const inactiveTime = now - (data.hostPing || data.createdAt || 0);
 
-           if (inactiveTime >= 45000) {
+           if (inactiveTime >= 60000) {
               updateDoc(doc(db, 'rooms', docSnap.id), { status: 'abandoned' }).catch(() => {});
               continue;
            }
 
            if (!data.isPublic || data.hostId === user.uid) continue;
 
-           if (docSnap.id !== roomId && data.createdAt < roomData.createdAt) {
+           if (docSnap.id !== roomId && docSnap.id < roomId) {
                try {
                  await runTransaction(db, async (transaction) => {
                    const olderRoomRef = doc(db, 'rooms', docSnap.id);
@@ -238,14 +238,15 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       const q = query(roomsRef, where('status', '==', 'waiting'), limit(25));
       const snapshot = await getDocs(q);
       
-      let matchRoomId = null;
+      let joined = false;
       const now = Date.now();
+      const docs = [...snapshot.docs].sort(() => 0.5 - Math.random());
 
-      for (const docSnap of snapshot.docs) {
+      for (const docSnap of docs) {
         const data = docSnap.data();
         const inactiveTime = now - (data.hostPing || data.createdAt || 0);
         
-        if (inactiveTime >= 45000) {
+        if (inactiveTime >= 60000) {
            // Zombie waiting room cleanup
            updateDoc(docSnap.ref, { status: 'abandoned' }).catch(() => {});
            continue;
@@ -253,16 +254,9 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
 
         if (!data.isPublic || data.hostId === user.uid) continue;
 
-        // Found a valid active room owned by someone else
-        matchRoomId = docSnap.id;
-        break;
-      }
-      
-      if (matchRoomId) {
-        // join existing public room
         try {
           await runTransaction(db, async (transaction) => {
-            const roomRef = doc(db, 'rooms', matchRoomId);
+            const roomRef = doc(db, 'rooms', docSnap.id);
             const roomDoc = await transaction.get(roomRef);
             if (!roomDoc.exists() || roomDoc.data().status !== 'waiting') {
               throw new Error("Cannot join");
@@ -275,14 +269,21 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
                guestPing: Date.now()
             });
           });
-          setRoomId(matchRoomId);
-          setIsMatching(false);
-          return;
+          setRoomId(docSnap.id);
+          joined = true;
+          break; // successfully joined
         } catch (err) {
-          console.warn("Matchmaking join collision, creating new room instead", err);
+          console.warn("Matchmaking join collision, trying next room", err);
+          // try next room in the loop
         }
-      } else {
-        // create new public room
+      }
+      
+      if (joined) {
+        setIsMatching(false);
+        return;
+      }
+
+      // create new public room
         const newId = Math.random().toString(36).substring(2, 6).toUpperCase();
         const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
         const selected = shuffled.slice(0, questionCount).map(q => allQuestions.indexOf(q));
@@ -307,10 +308,9 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
           isPublic: true
         });
         setRoomId(newId);
-      }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('匹配時發生錯誤');
+      setError(err.message || String(err) || '匹配時發生錯誤');
     } finally {
       setIsMatching(false);
     }
@@ -503,7 +503,17 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
                加入
              </button>
            </div>
-           {error && <p className="text-rose-500 font-bold mt-4">{error}</p>}
+           {error && (
+             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+               <div className="bg-white p-6 rounded-2xl border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] max-w-sm w-full">
+                 <h3 className="text-xl font-black text-rose-600 mb-2">發生錯誤</h3>
+                 <p className="text-slate-700 font-bold mb-6 break-words">{error}</p>
+                 <button onClick={() => setError('')} className="w-full py-3 bg-slate-900 text-white rounded-xl font-black shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all">
+                   關閉
+                 </button>
+               </div>
+             </div>
+           )}
         </div>
       </div>
     );
@@ -622,7 +632,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         <div className="bg-indigo-400 text-slate-900 px-3 sm:px-6 py-3 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] sm:shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] flex-1 min-w-0 relative overflow-hidden">
           {myAnswer && !isEvaluating && <div className="absolute top-0 right-0 bg-indigo-900 text-white text-[9px] sm:text-xs font-black px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-bl-lg">已鎖定</div>}
           <div className="text-[10px] sm:text-sm font-black opacity-80 mb-0.5 sm:mb-1 w-full flex items-center justify-start gap-1">
-            <span className="truncate">{isHost ? roomData.hostName : roomData.guestName}</span>
+            <span className="truncate shrink min-w-0">{isHost ? roomData.hostName : roomData.guestName}</span>
             <span className="shrink-0">(你)</span>
           </div>
           <div className="text-2xl sm:text-4xl font-black">{isHost ? roomData.p1Score : roomData.p2Score} <span className="text-sm sm:text-xl relative -top-1">分</span></div>
@@ -639,7 +649,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         <div className="bg-rose-400 text-slate-900 px-3 sm:px-6 py-3 sm:py-4 rounded-[1.5rem] sm:rounded-[2rem] border-4 border-slate-900 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] sm:shadow-[8px_8px_0px_0px_rgba(15,23,42,1)] flex-1 min-w-0 text-right flex flex-col items-end relative overflow-hidden">
           {oppAnswer && !isEvaluating && <div className="absolute top-0 left-0 bg-rose-900 text-white text-[9px] sm:text-xs font-black px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-br-lg">已鎖定</div>}
           <div className="text-[10px] sm:text-sm font-black opacity-80 mb-0.5 sm:mb-1 w-full flex items-center justify-end gap-1">
-            <span className="truncate">{isHost ? roomData.guestName : roomData.hostName}</span>
+            <span className="truncate shrink min-w-0">{isHost ? roomData.guestName : roomData.hostName}</span>
             <span className="shrink-0">(對手)</span>
           </div>
           <div className="text-2xl sm:text-4xl font-black">{isHost ? roomData.p2Score : roomData.p1Score} <span className="text-sm sm:text-xl relative -top-1">分</span></div>
