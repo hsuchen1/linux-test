@@ -33,7 +33,7 @@ export function parseQuestions(ocrText: string): Question[] {
 
   // Regex to extract questions
   // Matches "number. Question text" until the next "number." or end of string
-  const qRegex = /(?:^|\n)(\d+)\.\s+([\s\S]+?)(?=(?:\n\d+\.\s+[\s\S]|\Z))/g;
+  const qRegex = /(?:^|\n)(\d+)\.\s+([\s\S]+?)(?=(?:\n\d+\.\s+[\s\S]|$))/g;
   
   const questions: Question[] = [];
   while ((match = qRegex.exec(questionsText)) !== null) {

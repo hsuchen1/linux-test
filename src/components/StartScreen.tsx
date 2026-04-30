@@ -4,9 +4,10 @@ import { BookOpen, Monitor, Smartphone, Wifi } from 'lucide-react';
 
 interface StartScreenProps {
   onStart: (mode: GameMode, questionCount: number) => void;
+  maxQuestions: number;
 }
 
-export function StartScreen({ onStart }: StartScreenProps) {
+export function StartScreen({ onStart, maxQuestions }: StartScreenProps) {
   const [mode, setMode] = useState<GameMode>('single');
   const [count, setCount] = useState<number | ''>(10);
 
@@ -77,7 +78,7 @@ export function StartScreen({ onStart }: StartScreenProps) {
                 <input 
                   type="number" 
                   min="1" 
-                  max="128" 
+                  max={maxQuestions} 
                   value={count} 
                   onChange={(e) => {
                     const val = e.target.value;
@@ -85,7 +86,7 @@ export function StartScreen({ onStart }: StartScreenProps) {
                       setCount('');
                     } else {
                       const num = parseInt(val, 10);
-                      if (!isNaN(num)) setCount(Math.min(128, num));
+                      if (!isNaN(num)) setCount(Math.min(maxQuestions, num));
                     }
                   }} 
                   className="w-16 px-2 py-1 outline-none font-bold text-sm text-center text-slate-800"
