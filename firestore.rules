@@ -31,7 +31,8 @@ service cloud.firestore {
         && (data.get('questionIndices', null) == null || (data.questionIndices is list && data.questionIndices.size() <= 200))
         && (data.get('wrongAnswers', null) == null || (data.wrongAnswers is list && data.wrongAnswers.size() <= 200))
         && (data.get('hostPing', null) == null || data.hostPing is number)
-        && (data.get('guestPing', null) == null || data.guestPing is number);
+        && (data.get('guestPing', null) == null || data.guestPing is number)
+        && (data.get('isSpeedMode', null) == null || data.isSpeedMode is bool);
     }
 
     match /rooms/{roomId} {

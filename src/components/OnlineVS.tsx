@@ -22,6 +22,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
   const [error, setError] = useState('');
   const [isMatching, setIsMatching] = useState(false);
   const [showVSAnim, setShowVSAnim] = useState(false);
+  const [speedModeToggle, setSpeedModeToggle] = useState(false);
 
   const roomDataRef = useRef<any>(null);
   useEffect(() => {
@@ -107,6 +108,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         const q = query(
           roomsRef,
           where('status', '==', 'waiting'),
+          where('isSpeedMode', '==', !!roomData.isSpeedMode),
           limit(25)
         );
         const snapshot = await getDocs(q);
@@ -198,7 +200,8 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
       createdAt: Date.now(),
       hostPing: Date.now(),
       guestPing: null,
-      wrongAnswers: []
+      wrongAnswers: [],
+      isSpeedMode: speedModeToggle
     });
     setRoomId(newRoomId);
   };
@@ -237,12 +240,18 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     setIsMatching(true);
     try {
       const roomsRef = collection(db, 'rooms');
-      const q = query(roomsRef, where('status', '==', 'waiting'), limit(25));
+      const q = query(
+        roomsRef, 
+        where('status', '==', 'waiting'), 
+        limit(25)
+      );
       const snapshot = await getDocs(q);
       
       let joined = false;
       const now = Date.now();
-      const docs = [...snapshot.docs].sort(() => 0.5 - Math.random());
+      const docs = [...snapshot.docs]
+        .filter(d => !!d.data().isSpeedMode === speedModeToggle)
+        .sort(() => 0.5 - Math.random());
 
       for (const docSnap of docs) {
         const data = docSnap.data();
@@ -307,7 +316,8 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
           createdAt: Date.now(),
           hostPing: Date.now(),
           guestPing: null,
-          isPublic: true
+          isPublic: true,
+          isSpeedMode: speedModeToggle
         });
         setRoomId(newId);
     } catch (err: any) {
@@ -327,6 +337,11 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
 
     if (isHost && roomData.p1Answer) return;
     if (isGuest && roomData.p2Answer) return;
+
+    // In speed mode, if anyone has already answered, we ignore subsequent clicks
+    if (roomData.isSpeedMode) {
+      if (roomData.p1Answer || roomData.p2Answer) return;
+    }
 
     const updateMap: any = {};
     if (isHost) updateMap.p1Answer = answer;
@@ -350,17 +365,23 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
     }
     
     if (roomData.timerStart && (!roomData.p1Answer || !roomData.p2Answer)) {
-      const interval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - roomData.timerStart!) / 1000);
-        const remain = 10 - elapsed;
-        if (remain <= 0) {
-          setTimeLeft(0);
-          evalAndNext(); 
-        } else {
-          setTimeLeft(remain);
-        }
-      }, 100);
-      return () => clearInterval(interval);
+      if (roomData.isSpeedMode && (roomData.p1Answer || roomData.p2Answer)) {
+        // In speed mode, one answer is enough to trigger evaluation
+        setTimeLeft(0);
+        evalAndNext();
+      } else {
+        const interval = setInterval(() => {
+          const elapsed = Math.floor((Date.now() - roomData.timerStart!) / 1000);
+          const remain = 10 - elapsed;
+          if (remain <= 0) {
+            setTimeLeft(0);
+            evalAndNext(); 
+          } else {
+            setTimeLeft(remain);
+          }
+        }, 100);
+        return () => clearInterval(interval);
+      }
     } else if (roomData.p1Answer && roomData.p2Answer) {
       setTimeLeft(0);
       evalAndNext();
@@ -473,6 +494,19 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         <div className="bg-white p-10 rounded-[2.5rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] text-center max-w-md w-full">
            <h2 className="text-3xl font-black mb-8 text-slate-900">連線大廳</h2>
            
+           <div className="mb-6 bg-slate-50 border-4 border-slate-900 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
+             <div className="text-left font-bold text-slate-800">
+               <div className="text-lg">競速模式 (搶答)</div>
+               <div className="text-sm opacity-70">第一位作答者結算該題，答錯扣 1 分</div>
+             </div>
+             <button 
+               onClick={() => setSpeedModeToggle(!speedModeToggle)}
+               className={`relative w-16 h-8 rounded-full border-4 border-slate-900 transition-colors ${speedModeToggle ? 'bg-emerald-400' : 'bg-slate-300'}`}
+             >
+               <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white border-2 border-slate-900 transition-all ${speedModeToggle ? 'left-8' : 'left-0.5'}`} />
+             </button>
+           </div>
+
            <button 
              onClick={handleRandomMatch} 
              disabled={isMatching}
@@ -642,7 +676,7 @@ export function OnlineVS({ allQuestions, questionCount, onFinish, onHome }: Onli
         
         <div className="text-center pb-0 sm:pb-2 flex flex-col items-center gap-1 shrink-0 px-1">
            <div className={`px-2 sm:px-4 py-0.5 sm:py-1 rounded-full font-black text-slate-900 border-2 text-[10px] sm:text-sm whitespace-nowrap ${timeLeft !== null && timeLeft <= 3 ? 'bg-rose-400 border-rose-900 animate-pulse text-white' : 'bg-white border-slate-900'}`}>
-              {timeLeft !== null && !isEvaluating ? `⏳剩餘${timeLeft}秒` : (isEvaluating ? '判定中' : '搶答')}
+              {timeLeft !== null && !isEvaluating ? `⏳剩餘${timeLeft}秒` : (isEvaluating ? '判定中' : (roomData.isSpeedMode ? '⚡競速搶答' : '等待作答'))}
            </div>
            <div className="text-xl sm:text-2xl font-black text-slate-900 hidden sm:block">VS</div>
            <div className="font-bold text-slate-600 text-[10px] sm:text-sm whitespace-nowrap">第 {roomData.currentIndex + 1}/{roomData.questionIndices.length}</div>
