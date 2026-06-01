@@ -1,4 +1,4 @@
-export const rawOCRText = `
+export const linuxOCRText = `
 ==Start of PDF==
 ==Screenshot for page 1==
 Linux 與邊緣運算 (GS4538)

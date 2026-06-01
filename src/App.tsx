@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameMode, Question, WrongAnswer } from './types';
-import { rawOCRText } from './data/rawText';
-import { parseQuestions } from './data/parser';
+import { linuxOCRText } from './data/linuxText';
+import { econOCRText } from './data/econText';
+import { parseQuestions, parseEconQuestions } from './data/parser';
 import { auth } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 
@@ -12,7 +13,10 @@ import { DesktopVS } from './components/DesktopVS';
 import { OnlineVS } from './components/OnlineVS';
 import { ResultScreen } from './components/ResultScreen';
 
+export type Subject = 'linux' | 'econ';
+
 export default function App() {
+  const [subject, setSubject] = useState<Subject>('linux');
   const [allQuestions, setAllQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,16 +40,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Parse questions on mount
+    // Parse questions on mount or subject change
     try {
-      const parsed = parseQuestions(rawOCRText);
+      setLoading(true);
+      const parsed = subject === 'linux' ? parseQuestions(linuxOCRText) : parseEconQuestions(econOCRText);
       setAllQuestions(parsed);
     } catch (e) {
       console.error('Failed to parse questions:', e);
     } finally {
       setLoading(false);
     }
+  }, [subject]);
 
+  useEffect(() => {
     if (localStorage.getItem('theme') === 'dark') {
       setIsDark(true);
       window.document.documentElement.classList.add('dark');
@@ -183,7 +190,12 @@ export default function App() {
       )}
 
       {mode === 'start' && (
-        <StartScreen onStart={handleStart} maxQuestions={allQuestions.length} />
+        <StartScreen 
+          onStart={handleStart} 
+          maxQuestions={allQuestions.length}
+          subject={subject}
+          onSubjectChange={setSubject}
+        />
       )}
       
       {mode === 'single' && (

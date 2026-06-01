@@ -1,5 +1,58 @@
 import { Question } from '../types';
 
+export function parseEconQuestions(ocrText: string): Question[] {
+  let cleaned = ocrText
+    .replace(/==Start of PDF==/g, '')
+    .replace(/==End of PDF==/g, '')
+    .replace(/==Screenshot for page \d+==/g, '')
+    .replace(/==Start of OCR for page \d+==/g, '')
+    .replace(/==End of OCR for page \d+==/g, '');
+
+  const qRegex = /第\s*(\d+)\s*題\n([\s\S]+?)答案：\s*([A-D]|a|b|c|d|\([A-D]\)|\([a-d]\))(.*?)\n([\s\S]*?)(?=第\s*\d+\s*題|$)/gi;
+  
+  const questions: Question[] = [];
+  let match;
+  while ((match = qRegex.exec(cleaned)) !== null) {
+    const qId = parseInt(match[1], 10);
+    const content = match[2];
+    const rawAnswer = match[3].toUpperCase().replace(/[\(\)]/g, '');
+    const answer = rawAnswer;
+    const explanation = match[5].replace(/^解說：\s*/, '').trim();
+
+    let text = content;
+    let A = '', B = '', C = '', D = '';
+
+    const optsRegex = /(?:\(A\)|A\.|a\.)([\s\S]*?)(?:\(B\)|B\.|b\.)([\s\S]*?)(?:\(C\)|C\.|c\.)([\s\S]*?)(?:\(D\)|D\.|d\.)([\s\S]*?)$/i;
+    const optsMatch = optsRegex.exec(content);
+    if (optsMatch) {
+      text = content.substring(0, optsMatch.index).trim();
+      text = text.replace(/^\d+\.\s*/, '').trim(); // Remove leading "1. " if present
+      A = optsMatch[1].trim();
+      B = optsMatch[2].trim();
+      C = optsMatch[3].trim();
+      D = optsMatch[4].trim();
+      
+      questions.push({
+        id: qId,
+        text: text,
+        options: { A, B, C, D },
+        answer: answer,
+        // @ts-ignore
+        explanation: explanation // (optional, but good to parse)
+      });
+    } else {
+       // fallback
+       questions.push({
+         id: qId,
+         text: content.trim(),
+         options: { A: 'A', B: 'B', C: 'C', D: 'D' },
+         answer: answer
+       });
+    }
+  }
+  return questions;
+}
+
 export function parseQuestions(ocrText: string): Question[] {
   let cleaned = ocrText
     .replace(/==Start of PDF==/g, '')

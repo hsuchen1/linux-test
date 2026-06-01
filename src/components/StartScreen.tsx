@@ -2,22 +2,41 @@ import React, { useState } from 'react';
 import { GameMode } from '../types';
 import { BookOpen, Monitor, Smartphone, Wifi } from 'lucide-react';
 
+import { Subject } from '../App';
+
 interface StartScreenProps {
   onStart: (mode: GameMode, questionCount: number) => void;
   maxQuestions: number;
+  subject: Subject;
+  onSubjectChange: (subj: Subject) => void;
 }
 
-export function StartScreen({ onStart, maxQuestions }: StartScreenProps) {
+export function StartScreen({ onStart, maxQuestions, subject, onSubjectChange }: StartScreenProps) {
   const [mode, setMode] = useState<GameMode>('single');
   const [count, setCount] = useState<number | ''>(10);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-5xl flex flex-col gap-6">
-        <header className="flex justify-between items-end border-b-4 border-slate-900 pb-4">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b-4 border-slate-900 pb-4 gap-4">
           <div className="flex flex-col">
-            <span className="bg-indigo-600 text-white px-3 py-1 text-sm font-bold w-fit rounded mb-1">LINUX GS4538</span>
+            <span className="bg-indigo-600 text-white px-3 py-1 text-sm font-bold w-fit rounded mb-1">題庫系統</span>
             <h1 className="text-5xl font-black tracking-tight text-slate-900 uppercase">題庫 <span className="text-indigo-600">練習</span></h1>
+          </div>
+          
+          <div className="flex gap-2">
+            <button 
+              onClick={() => onSubjectChange('linux')}
+              className={`px-4 py-2 font-bold rounded-lg border-2 border-slate-900 transition-colors ${subject === 'linux' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900 hover:bg-slate-100'}`}
+            >
+              Linux 與邊緣運算
+            </button>
+            <button 
+              onClick={() => onSubjectChange('econ')}
+              className={`px-4 py-2 font-bold rounded-lg border-2 border-slate-900 transition-colors ${subject === 'econ' ? 'bg-slate-900 text-white' : 'bg-white text-slate-900 hover:bg-slate-100'}`}
+            >
+              經濟學
+            </button>
           </div>
         </header>
 
