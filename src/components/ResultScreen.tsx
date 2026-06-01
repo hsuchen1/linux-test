@@ -108,6 +108,12 @@ export function ResultScreen({ mode, scores, playerNames, total, wrongAnswers, o
                       );
                     })}
                   </div>
+                  {gw.question.explanation && (
+                    <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/30 border-2 border-amber-200 dark:border-amber-800">
+                      <div className="font-bold text-amber-800 dark:text-amber-200 mb-1 text-sm">解析：</div>
+                      <div className="text-slate-700 dark:text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{gw.question.explanation}</div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

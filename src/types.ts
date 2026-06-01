@@ -10,6 +10,7 @@ export interface Question {
     D: string;
   };
   answer: string;
+  explanation?: string;
 }
 
 export interface WrongAnswer {
